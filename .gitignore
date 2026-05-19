@@ -4,5 +4,6 @@ __pycache__/
 .vscode/
 *.o
 *.exe
+/*.pdf
 .DS_Store
 Thumbs.db

