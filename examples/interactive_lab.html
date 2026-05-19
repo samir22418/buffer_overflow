@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buffer Lab</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f6f7fb;
+      --ink: #17212f;
+      --muted: #5d6878;
+      --line: #d9dee8;
+      --panel: #ffffff;
+      --buffer: #dbeafe;
+      --buffer-line: #78a6df;
+      --canary: #fff0bc;
+      --canary-line: #d69a1f;
+      --frame: #d7f4ea;
+      --frame-line: #48a77c;
+      --return: #ffe2dd;
+      --return-line: #d86758;
+      --changed: #2f6fed;
+      --danger: #b42318;
+      --ok: #207a57;
+      --shadow: 0 16px 40px rgba(23, 33, 47, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--page);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .app {
+      width: min(1180px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 24px 0 32px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.55rem, 4vw, 2.45rem);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .status-pill {
+      max-width: 520px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 10px 12px;
+      color: var(--muted);
+      box-shadow: var(--shadow);
+    }
+
+    .status-pill[data-tone="ok"] {
+      color: var(--ok);
+      border-color: rgba(32, 122, 87, 0.35);
+    }
+
+    .status-pill[data-tone="danger"] {
+      color: var(--danger);
+      border-color: rgba(180, 35, 24, 0.35);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 310px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .controls {
+      display: grid;
+      gap: 18px;
+      padding: 18px;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+    }
+
+    .field-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    label,
+    legend {
+      color: var(--muted);
+      font-size: 0.86rem;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    output {
+      min-width: 44px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 3px 8px;
+      text-align: center;
+      color: var(--ink);
+      background: #fbfcff;
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--changed);
+    }
+
+    input[type="number"],
+    input[type="text"] {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      background: #fbfcff;
+      color: var(--ink);
+    }
+
+    input:disabled {
+      cursor: not-allowed;
+      opacity: 0.58;
+    }
+
+    input[type="checkbox"],
+    input[type="radio"] {
+      accent-color: var(--changed);
+    }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: var(--ink);
+      font-size: 0.96rem;
+      font-weight: 650;
+    }
+
+    fieldset {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .segments {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .segments label {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfcff;
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    .segments input {
+      position: absolute;
+      inline-size: 1px;
+      block-size: 1px;
+      opacity: 0;
+    }
+
+    .segments label:has(input:checked) {
+      border-color: rgba(47, 111, 237, 0.7);
+      background: #edf4ff;
+      color: #194ca7;
+    }
+
+    .memory-panel {
+      overflow: hidden;
+    }
+
+    .memory-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .memory-title {
+      margin: 0;
+      font-size: 1rem;
+      letter-spacing: 0;
+    }
+
+    .metrics {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: flex-end;
+      color: var(--muted);
+      font-size: 0.84rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 4px 8px;
+      background: #fbfcff;
+    }
+
+    .stack {
+      display: grid;
+      gap: 10px;
+      padding: 18px;
+    }
+
+    .segment {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr) 104px;
+      gap: 12px;
+      align-items: center;
+      min-height: 52px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .segment.buffer {
+      background: var(--buffer);
+      border-color: var(--buffer-line);
+    }
+
+    .segment.canary {
+      background: var(--canary);
+      border-color: var(--canary-line);
+    }
+
+    .segment.saved_frame_pointer {
+      background: var(--frame);
+      border-color: var(--frame-line);
+    }
+
+    .segment.return_address {
+      background: var(--return);
+      border-color: var(--return-line);
+    }
+
+    .offset,
+    .status {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 750;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .name {
+      display: block;
+      font-weight: 750;
+      overflow-wrap: anywhere;
+    }
+
+    .bytes {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 0.78rem;
+      overflow-wrap: anywhere;
+    }
+
+    .status.changed,
+    .status.marker,
+    .status.corrupted,
+    .status.overwritten,
+    .status.written {
+      color: var(--danger);
+    }
+
+    .status.same {
+      color: var(--ok);
+    }
+
+    .byte-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+      gap: 6px;
+      padding: 0 18px 18px;
+    }
+
+    .byte {
+      min-height: 46px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #fbfcff;
+      padding: 6px;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 0.75rem;
+      color: var(--ink);
+    }
+
+    .byte span,
+    .byte strong {
+      display: block;
+    }
+
+    .byte span {
+      color: var(--muted);
+      font-size: 0.66rem;
+    }
+
+    .byte.changed {
+      border-color: var(--changed);
+      box-shadow: inset 0 0 0 1px rgba(47, 111, 237, 0.18);
+    }
+
+    .byte.buffer {
+      background: #edf5ff;
+    }
+
+    .byte.canary {
+      background: #fff7d6;
+    }
+
+    .byte.saved_frame_pointer {
+      background: #ecfbf5;
+    }
+
+    .byte.return_address {
+      background: #fff0ed;
+    }
+
+    @media (max-width: 860px) {
+      .topbar,
+      .memory-header {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+
+      .segment {
+        grid-template-columns: 1fr;
+      }
+
+      .status-pill {
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <h1>Buffer Lab</h1>
+      <div class="status-pill" id="summary" data-tone="ok" aria-live="polite"></div>
+    </header>
+
+    <div class="workspace">
+      <form class="controls panel" aria-label="Simulation controls">
+        <div class="field">
+          <div class="field-row">
+            <label for="payloadSize">Payload size</label>
+            <output id="payloadOut" for="payloadSize"></output>
+          </div>
+          <input id="payloadSize" type="range" min="0" max="112" value="80">
+        </div>
+
+        <div class="field">
+          <label for="bufferSize">Buffer size</label>
+          <input id="bufferSize" type="number" min="4" max="128" value="64">
+        </div>
+
+        <fieldset>
+          <legend>Copy mode</legend>
+          <div class="segments">
+            <label><input type="radio" name="mode" value="unsafe" checked>Unsafe</label>
+            <label><input type="radio" name="mode" value="bounded">Bounded</label>
+          </div>
+        </fieldset>
+
+        <label class="toggle" for="canary">
+          <span>Stack canary</span>
+          <input id="canary" type="checkbox">
+        </label>
+
+        <label class="toggle" for="useMarker">
+          <span>Return marker</span>
+          <input id="useMarker" type="checkbox" checked>
+        </label>
+
+        <div class="field">
+          <label for="markerText">Marker bytes</label>
+          <input id="markerText" type="text" maxlength="4" value="BBBB">
+        </div>
+      </form>
+
+      <section class="memory-panel panel" aria-label="Memory layout">
+        <div class="memory-header">
+          <h2 class="memory-title">Stack frame</h2>
+          <div class="metrics" id="metrics"></div>
+        </div>
+        <div class="stack" id="stack"></div>
+        <div class="byte-grid" id="byteGrid" aria-label="Bytes after copy"></div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const fields = {
+      payloadSize: document.querySelector("#payloadSize"),
+      payloadOut: document.querySelector("#payloadOut"),
+      bufferSize: document.querySelector("#bufferSize"),
+      canary: document.querySelector("#canary"),
+      useMarker: document.querySelector("#useMarker"),
+      markerText: document.querySelector("#markerText"),
+      summary: document.querySelector("#summary"),
+      metrics: document.querySelector("#metrics"),
+      stack: document.querySelector("#stack"),
+      byteGrid: document.querySelector("#byteGrid")
+    };
+
+    const labels = {
+      buffer: "buffer",
+      canary: "canary",
+      saved_frame_pointer: "saved frame pointer",
+      return_address: "return address"
+    };
+
+    const initialValues = {
+      canary: bytesFromText("CNR!"),
+      saved_frame_pointer: bytesFromText("EBP!"),
+      return_address: bytesFromText("RET0")
+    };
+
+    document.querySelectorAll("input").forEach((input) => {
+      input.addEventListener("input", simulate);
+      input.addEventListener("change", simulate);
+    });
+
+    simulate();
+
+    function simulate() {
+      const bufferSize = clamp(parseInt(fields.bufferSize.value, 10) || 64, 4, 128);
+      fields.bufferSize.value = bufferSize;
+      const canaryEnabled = fields.canary.checked;
+      const mode = document.querySelector("input[name='mode']:checked").value;
+      const markerBytes = normalizedMarker(fields.markerText.value);
+      const before = buildLayout(bufferSize, canaryEnabled);
+      const returnOffset = before.find((part) => part.name === "return_address").offset;
+      const payload = buildPayload(returnOffset, markerBytes);
+      const rejected = mode === "bounded" && payload.length > bufferSize;
+      const afterMemory = flatten(before);
+
+      if (!rejected) {
+        for (let index = 0; index < payload.length && index < afterMemory.length; index += 1) {
+          afterMemory[index] = payload[index];
+        }
+      }
+
+      const after = splitLayout(before, afterMemory);
+      const result = summarize(before, after, payload, markerBytes, bufferSize, canaryEnabled, rejected);
+
+      fields.payloadOut.value = payload.length;
+      fields.markerText.disabled = !fields.useMarker.checked;
+      fields.payloadSize.disabled = fields.useMarker.checked;
+      renderSummary(result);
+      renderMetrics(result, returnOffset, afterMemory.length);
+      renderStack(before, after, result);
+      renderBytes(before, afterMemory);
+    }
+
+    function buildLayout(bufferSize, canaryEnabled) {
+      const layout = [
+        { name: "buffer", offset: 0, bytes: new Array(bufferSize).fill(0) }
+      ];
+      let offset = bufferSize;
+      if (canaryEnabled) {
+        layout.push({ name: "canary", offset, bytes: [...initialValues.canary] });
+        offset += 4;
+      }
+      layout.push({ name: "saved_frame_pointer", offset, bytes: [...initialValues.saved_frame_pointer] });
+      offset += 4;
+      layout.push({ name: "return_address", offset, bytes: [...initialValues.return_address] });
+      return layout;
+    }
+
+    function buildPayload(returnOffset, markerBytes) {
+      if (fields.useMarker.checked) {
+        return [...new Array(returnOffset).fill(65), ...markerBytes];
+      }
+      const requested = parseInt(fields.payloadSize.value, 10) || 0;
+      return new Array(clamp(requested, 0, 112)).fill(65);
+    }
+
+    function summarize(before, after, payload, markerBytes, bufferSize, canaryEnabled, rejected) {
+      const canaryBefore = valueFor(before, "canary");
+      const canaryAfter = valueFor(after, "canary");
+      const savedBefore = valueFor(before, "saved_frame_pointer");
+      const savedAfter = valueFor(after, "saved_frame_pointer");
+      const returnBefore = valueFor(before, "return_address");
+      const returnAfter = valueFor(after, "return_address");
+      const canaryOk = !canaryEnabled || bytesEqual(canaryBefore, canaryAfter);
+      const controlMarkerSeen = bytesEqual(returnAfter, markerBytes);
+      const overflowed = payload.length > bufferSize || !bytesEqual(savedBefore, savedAfter) || !bytesEqual(returnBefore, returnAfter);
+      const aborted = canaryEnabled && !canaryOk && !rejected;
+      let text = "OK: payload stayed inside the buffer";
+
+      if (rejected) {
+        text = `REJECTED: payload is ${payload.length} bytes, buffer is ${bufferSize} bytes`;
+      } else if (aborted) {
+        text = "ABORTED: stack canary detected corruption";
+      } else if (controlMarkerSeen) {
+        text = "OVERWRITE: return address replaced with marker";
+      } else if (overflowed) {
+        text = "OVERFLOW: adjacent stack metadata changed";
+      }
+
+      return { text, payloadSize: payload.length, bufferSize, canaryEnabled, canaryOk, controlMarkerSeen, overflowed, aborted, rejected };
+    }
+
+    function renderSummary(result) {
+      fields.summary.textContent = result.text;
+      const tone = result.aborted || result.rejected || result.overflowed ? "danger" : "ok";
+      fields.summary.dataset.tone = tone;
+    }
+
+    function renderMetrics(result, returnOffset, totalSize) {
+      const items = [
+        ["payload", result.payloadSize],
+        ["buffer", result.bufferSize],
+        ["return offset", returnOffset],
+        ["frame", totalSize],
+        ["canary ok", result.canaryOk ? "yes" : "no"]
+      ];
+      fields.metrics.replaceChildren(...items.map(([name, value]) => {
+        const item = document.createElement("span");
+        item.className = "metric";
+        item.textContent = `${name}: ${value}`;
+        return item;
+      }));
+    }
+
+    function renderStack(before, after, result) {
+      const parts = after.map((part) => {
+        const original = before.find((item) => item.name === part.name);
+        const status = statusFor(part.name, original.bytes, part.bytes, result);
+        const segment = document.createElement("section");
+        segment.className = `segment ${part.name}`;
+        segment.innerHTML = `
+          <span class="offset">${part.offset}-${part.offset + part.bytes.length - 1}</span>
+          <span>
+            <span class="name">${labels[part.name]}</span>
+            <span class="bytes">${hexPreview(original.bytes)} -> ${hexPreview(part.bytes)}</span>
+          </span>
+          <span class="status ${status}">${status}</span>
+        `;
+        return segment;
+      });
+      fields.stack.replaceChildren(...parts);
+    }
+
+    function renderBytes(layout, memory) {
+      const cells = memory.map((byte, index) => {
+        const owner = layout.find((part) => index >= part.offset && index < part.offset + part.bytes.length);
+        const original = owner.bytes[index - owner.offset];
+        const cell = document.createElement("span");
+        cell.className = `byte ${owner.name}${original !== byte ? " changed" : ""}`;
+        cell.innerHTML = `<span>${index}</span><strong>${toHex(byte)}</strong>`;
+        return cell;
+      });
+      fields.byteGrid.replaceChildren(...cells);
+    }
+
+    function statusFor(name, before, after, result) {
+      if (bytesEqual(before, after)) return "same";
+      if (name === "buffer") return "written";
+      if (name === "canary") return result.canaryOk ? "changed" : "corrupted";
+      if (name === "return_address") return result.controlMarkerSeen ? "marker" : "overwritten";
+      return "overwritten";
+    }
+
+    function splitLayout(layout, memory) {
+      return layout.map((part) => ({
+        name: part.name,
+        offset: part.offset,
+        bytes: memory.slice(part.offset, part.offset + part.bytes.length)
+      }));
+    }
+
+    function flatten(layout) {
+      return layout.flatMap((part) => part.bytes);
+    }
+
+    function valueFor(layout, name) {
+      const part = layout.find((item) => item.name === name);
+      return part ? part.bytes : [];
+    }
+
+    function hexPreview(bytes) {
+      const shown = bytes.slice(0, 8).map(toHex).join(" ");
+      return bytes.length > 8 ? `${shown} ...` : shown;
+    }
+
+    function normalizedMarker(text) {
+      const value = bytesFromText(text || "BBBB").slice(0, 4);
+      while (value.length < 4) value.push(33);
+      return value;
+    }
+
+    function bytesFromText(text) {
+      return [...text].map((char) => char.charCodeAt(0) & 0xff);
+    }
+
+    function bytesEqual(left, right) {
+      return left.length === right.length && left.every((value, index) => value === right[index]);
+    }
+
+    function toHex(value) {
+      return value.toString(16).padStart(2, "0");
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+  </script>
+</body>
+</html>
